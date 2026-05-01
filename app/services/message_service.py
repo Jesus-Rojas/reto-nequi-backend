@@ -51,12 +51,14 @@ class MessageService:
         sender: str | None,
         limit: int,
         offset: int,
+        order: str = "asc",
     ) -> tuple[list[MessageData], int]:
         messages, total = self._repository.get_by_session_id(
             session_id=session_id,
             sender=sender,
             limit=limit,
             offset=offset,
+            order=order,
         )
         return [self._to_schema(m) for m in messages], total
 

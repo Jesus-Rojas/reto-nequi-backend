@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/messages.db"
     api_key: str = "nequi-secret-key-change-in-production"
     rate_limit_per_minute: int = 60
-    cors_origins: List[str] = ["http://localhost:4200", "http://localhost:80", "http://localhost"]
+    cors_origins: List[str] = ["http://localhost:4200", "http://localhost:8080", "http://localhost:80", "http://localhost"]
 
     model_config = {"env_file": ".env"}
 

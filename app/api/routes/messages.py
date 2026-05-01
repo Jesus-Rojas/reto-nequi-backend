@@ -82,6 +82,7 @@ def get_session_messages(
     ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    order: str = Query("asc", pattern="^(asc|desc)$", description="Orden de resultados"),
     service: MessageService = Depends(get_message_service),
 ) -> PaginatedMessagesResponse:
     """Devuelve todos los mensajes de *session_id* con soporte de paginación."""
@@ -90,6 +91,7 @@ def get_session_messages(
         sender=sender,
         limit=limit,
         offset=offset,
+        order=order,
     )
     return PaginatedMessagesResponse(
         status="success",
@@ -112,7 +114,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     await manager.connect(websocket, session_id)
     try:
         while True:
-            # Keep connection alive; client can send pings if needed
+            # Absorb keep-alive pings from the client; ignore content
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)

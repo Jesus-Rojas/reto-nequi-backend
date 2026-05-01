@@ -27,13 +27,15 @@ class MessageRepository:
         sender: str | None = None,
         limit: int = 20,
         offset: int = 0,
+        order: str = "asc",
     ) -> tuple[list[Message], int]:
         query = self._db.query(Message).filter(Message.session_id == session_id)
         if sender:
             query = query.filter(Message.sender == sender)
         total = query.count()
+        order_col = Message.timestamp.desc() if order == "desc" else Message.timestamp
         messages = (
-            query.order_by(Message.timestamp).offset(offset).limit(limit).all()
+            query.order_by(order_col).offset(offset).limit(limit).all()
         )
         return messages, total
 
@@ -51,6 +53,6 @@ class MessageRepository:
             query = query.filter(Message.session_id == session_id)
         total = query.count()
         messages = (
-            query.order_by(Message.timestamp).offset(offset).limit(limit).all()
+            query.order_by(Message.timestamp.desc()).offset(offset).limit(limit).all()
         )
         return messages, total
