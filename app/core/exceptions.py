@@ -1,10 +1,13 @@
+from starlette import status
+
+
 class MessageAPIException(Exception):
     def __init__(
         self,
         code: str,
         message: str,
         details: str | None = None,
-        status_code: int = 400,
+        status_code: int = status.HTTP_400_BAD_REQUEST,
     ):
         self.code = code
         self.message = message
@@ -19,7 +22,7 @@ class InvalidFormatException(MessageAPIException):
             code="INVALID_FORMAT",
             message="Formato de mensaje inválido",
             details=details,
-            status_code=422,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
 
@@ -29,7 +32,7 @@ class DuplicateMessageException(MessageAPIException):
             code="DUPLICATE_MESSAGE",
             message="El mensaje ya existe",
             details=f"Ya existe un mensaje con el ID '{message_id}'",
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
         )
 
 
@@ -39,7 +42,7 @@ class SessionNotFoundException(MessageAPIException):
             code="SESSION_NOT_FOUND",
             message="Sesión no encontrada",
             details=f"No se encontraron mensajes para la sesión '{session_id}'",
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
 
@@ -49,5 +52,5 @@ class UnauthorizedException(MessageAPIException):
             code="UNAUTHORIZED",
             message="No autorizado",
             details="API key inválida o no proporcionada",
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
         )

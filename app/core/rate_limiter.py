@@ -1,9 +1,13 @@
 import time
 from collections import defaultdict
 
+from fastapi.responses import JSONResponse
+from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from app.schemas.message import ErrorDetail, ErrorResponse
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
@@ -16,6 +20,9 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         self._limit = requests_per_minute
         self._windows: dict[str, list[float]] = defaultdict(list)
 
+    def _evict_expired_timestamps(self, timestamps: list[float], window_start: float) -> list[float]:
+        return [timestamp for timestamp in timestamps if timestamp > window_start]
+
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
@@ -24,21 +31,18 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         now = time.monotonic()
         window_start = now - 60.0
 
-        # Evict timestamps outside the current window
-        self._windows[client_ip] = [
-            t for t in self._windows[client_ip] if t > window_start
-        ]
+        self._windows[client_ip] = self._evict_expired_timestamps(self._windows[client_ip], window_start)
 
         if len(self._windows[client_ip]) >= self._limit:
-            return Response(
-                content=(
-                    '{"status":"error","error":{'
-                    '"code":"RATE_LIMIT_EXCEEDED",'
-                    '"message":"Demasiadas solicitudes",'
-                    '"details":"Límite de solicitudes excedido. Intenta de nuevo en un minuto."}}'
-                ),
-                status_code=429,
-                media_type="application/json",
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=ErrorResponse(
+                    error=ErrorDetail(
+                        code="RATE_LIMIT_EXCEEDED",
+                        message="Demasiadas solicitudes",
+                        details="Límite de solicitudes excedido. Intenta de nuevo en un minuto.",
+                    )
+                ).model_dump(),
             )
 
         self._windows[client_ip].append(now)

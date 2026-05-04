@@ -1,13 +1,14 @@
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette import status
 
 from app.core.exceptions import MessageAPIException
 from app.schemas.message import ErrorDetail, ErrorResponse
 
 
-async def message_api_exception_handler(
-    request: Request, exc: MessageAPIException
+def message_api_exception_handler(
+    _request: Request, exc: MessageAPIException
 ) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
@@ -22,15 +23,19 @@ async def message_api_exception_handler(
     )
 
 
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
+def validation_exception_handler(
+    _request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    details = "; ".join(
-        f"Campo '{'->'.join(str(loc) for loc in e['loc'])}': {e['msg']}"
-        for e in exc.errors()
-    )
+    error_messages = []
+    for error in exc.errors():
+        field_path = [str(loc) for loc in error["loc"]]
+        field = "->".join(field_path)
+        message = error["msg"]
+        error_messages.append(f"Campo '{field}': {message}")
+
+    details = "; ".join(error_messages)
     return JSONResponse(
-        status_code=422,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=ErrorResponse(
             status="error",
             error=ErrorDetail(
@@ -42,11 +47,11 @@ async def validation_exception_handler(
     )
 
 
-async def internal_server_error_handler(
-    request: Request, exc: Exception
+def internal_server_error_handler(
+    _request: Request, _exc: Exception
 ) -> JSONResponse:
     return JSONResponse(
-        status_code=500,
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=ErrorResponse(
             status="error",
             error=ErrorDetail(

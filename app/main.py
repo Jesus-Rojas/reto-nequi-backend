@@ -36,6 +36,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Middleware ────────────────────────────────────────────────────────────────
+
+app.add_middleware(
+    RateLimiterMiddleware,
+    requests_per_minute=settings.rate_limit_per_minute,
+)
+
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
 app.add_middleware(
@@ -44,13 +51,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# ── Middleware ────────────────────────────────────────────────────────────────
-
-app.add_middleware(
-    RateLimiterMiddleware,
-    requests_per_minute=settings.rate_limit_per_minute,
 )
 
 # ── Exception handlers ────────────────────────────────────────────────────────

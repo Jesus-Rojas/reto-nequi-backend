@@ -60,7 +60,7 @@ class MessageService:
             offset=offset,
             order=order,
         )
-        return [self._to_schema(m) for m in messages], total
+        return [self._to_schema(message) for message in messages], total
 
     def search_messages(
         self,
@@ -75,7 +75,7 @@ class MessageService:
             limit=limit,
             offset=offset,
         )
-        return [self._to_schema(m) for m in messages], total
+        return [self._to_schema(message) for message in messages], total
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

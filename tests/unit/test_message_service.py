@@ -137,7 +137,7 @@ class TestGetSessionMessages:
         svc.get_session_messages("sess", "user", 10, 5)
 
         repo.get_by_session_id.assert_called_once_with(
-            session_id="sess", sender="user", limit=10, offset=5
+            session_id="sess", sender="user", limit=10, offset=5, order="asc"
         )
 
 

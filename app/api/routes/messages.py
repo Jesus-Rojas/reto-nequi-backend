@@ -1,4 +1,7 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from starlette import status
 
 from app.api.dependencies import get_message_service, verify_api_key
 from app.api.websocket_manager import manager
@@ -12,19 +15,23 @@ from app.services.message_service import MessageService
 
 router = APIRouter()
 
+# ── Dependency aliases ────────────────────────────────────────────────────────
+
+ServiceDep = Annotated[MessageService, Depends(get_message_service)]
+ApiKeyDep = Annotated[None, Depends(verify_api_key)]
+
 # ── REST endpoints ────────────────────────────────────────────────────────────
 
 
 @router.post(
     "/api/messages",
-    response_model=MessageResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Enviar un mensaje",
-    dependencies=[Depends(verify_api_key)],
 )
 async def create_message(
     payload: MessageCreate,
-    service: MessageService = Depends(get_message_service),
+    service: ServiceDep,
+    _: ApiKeyDep,
 ) -> MessageResponse:
     """Valida, procesa y almacena un mensaje. Notifica a clientes WebSocket."""
     data = service.process_and_store(payload)
@@ -39,16 +46,15 @@ async def create_message(
 # path "/api/messages/search" is not swallowed by the parameterised route.
 @router.get(
     "/api/messages/search",
-    response_model=PaginatedMessagesResponse,
     summary="Buscar mensajes por palabra clave",
-    dependencies=[Depends(verify_api_key)],
 )
 def search_messages(
-    keyword: str = Query(..., min_length=1, description="Término de búsqueda"),
-    session_id: str | None = Query(None, description="Filtrar por sesión"),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    service: MessageService = Depends(get_message_service),
+    service: ServiceDep,
+    _: ApiKeyDep,
+    keyword: Annotated[str, Query(min_length=1, description="Término de búsqueda")],
+    session_id: Annotated[str | None, Query(description="Filtrar por sesión")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PaginatedMessagesResponse:
     """Busca mensajes que contengan *keyword* en su contenido."""
     messages, total = service.search_messages(
@@ -71,21 +77,17 @@ def search_messages(
 
 @router.get(
     "/api/messages/{session_id}",
-    response_model=PaginatedMessagesResponse,
     summary="Obtener mensajes de una sesión",
-    dependencies=[Depends(verify_api_key)],
 )
 def get_session_messages(
     session_id: str,
-    sender: str | None = Query(
-        None, pattern="^(user|system)$", description="Filtrar por remitente"
-    ),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    order: str = Query("asc", pattern="^(asc|desc)$", description="Orden de resultados"),
-    service: MessageService = Depends(get_message_service),
+    service: ServiceDep,
+    _: ApiKeyDep,
+    sender: Annotated[str | None, Query(pattern="^(user|system)$", description="Filtrar por remitente")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    order: Annotated[str, Query(pattern="^(asc|desc)$", description="Orden de resultados")] = "asc",
 ) -> PaginatedMessagesResponse:
-    """Devuelve todos los mensajes de *session_id* con soporte de paginación."""
     messages, total = service.get_session_messages(
         session_id=session_id,
         sender=sender,
