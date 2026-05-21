@@ -17,6 +17,60 @@ API RESTful para procesamiento de mensajes de chat, construida con **FastAPI + S
 
 ## Arquitectura
 
+### Flujo de una request
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant MW as Middleware<br/>(RateLimiter + Auth)
+    participant R as Router<br/>/api/messages
+    participant SVC as MessageService
+    participant CF as ContentFilter
+    participant REPO as MessageRepository
+    participant DB as SQLite
+
+    C->>MW: POST /api/messages<br/>X-API-Key: ...
+    MW-->>C: 429 si supera rate limit
+    MW-->>C: 401 si API key inválida
+    MW->>R: request válida
+    R->>SVC: create_message(dto)
+    SVC->>CF: filter(content)
+    CF-->>SVC: is_filtered: bool
+    SVC->>REPO: save(message)
+    REPO->>DB: INSERT
+    DB-->>REPO: OK
+    REPO-->>SVC: MessageModel
+    SVC-->>R: MessageResponse
+    R-->>C: 201 { status, data }
+```
+
+### Infraestructura AWS (Terraform)
+
+```mermaid
+graph TB
+    subgraph AWS["☁️ AWS / LocalStack"]
+        subgraph VPC["VPC 10.1.0.0/16"]
+            subgraph Subnet["Subnet pública 10.1.1.0/24"]
+                EC2["EC2 t3.small\nFastAPI + Docker\nuser_data: bootstrap.sh"]
+            end
+            SG["Security Group\n:22 SSH\n:8000 API"]
+            EC2 --- SG
+        end
+        IGW["Internet Gateway"]
+        RT["Route Table\n0.0.0.0/0 → IGW"]
+        EIP["Elastic IP\nstatic public IP"]
+        VPC --> IGW
+        RT --> IGW
+        EIP --> EC2
+    end
+
+    Internet((Internet)) -->|:8000| EIP
+    Internet -->|SSH :22| EIP
+    Dev(["👨‍💻 Developer\nterraform apply"]) -->|provision| AWS
+```
+
+### Estructura de carpetas
+
 ```
 app/
 ├── config.py                  # Configuración (pydantic-settings)
@@ -96,135 +150,7 @@ X-API-Key: nequi-secret-key-change-in-production
 
 Configura tu propia clave en `.env` → variable `API_KEY`.
 
----
-
-## Documentación de la API
-
-### POST `/api/messages`
-
-Crea y procesa un nuevo mensaje.
-
-**Cuerpo de la solicitud:**
-
-```json
-{
-  "message_id": "msg-123456",
-  "session_id": "session-abcdef",
-  "content": "Hola, ¿cómo puedo ayudarte hoy?",
-  "timestamp": "2024-01-15T14:30:00Z",
-  "sender": "system"
-}
-```
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `message_id` | string | Identificador único del mensaje |
-| `session_id` | string | Identificador de la sesión |
-| `content` | string | Contenido (1–10 000 caracteres) |
-| `timestamp` | ISO 8601 datetime | Marca de tiempo del mensaje |
-| `sender` | `"user"` \| `"system"` | Remitente |
-
-**Respuesta exitosa (201):**
-
-```json
-{
-  "status": "success",
-  "data": {
-    "message_id": "msg-123456",
-    "session_id": "session-abcdef",
-    "content": "Hola, ¿cómo puedo ayudarte hoy?",
-    "timestamp": "2024-01-15T14:30:00",
-    "sender": "system",
-    "metadata": {
-      "word_count": 6,
-      "character_count": 32,
-      "processed_at": "2024-01-15T14:30:01",
-      "is_filtered": false
-    }
-  }
-}
-```
-
-**Códigos de error:**
-
-| Código HTTP | `error.code` | Causa |
-|---|---|---|
-| 401 | `UNAUTHORIZED` | API key ausente o incorrecta |
-| 409 | `DUPLICATE_MESSAGE` | Ya existe un mensaje con ese `message_id` |
-| 422 | `VALIDATION_ERROR` | Campos faltantes o formato inválido |
-| 429 | `RATE_LIMIT_EXCEEDED` | Demasiadas solicitudes por minuto |
-
----
-
-### GET `/api/messages/{session_id}`
-
-Recupera los mensajes de una sesión con paginación.
-
-**Parámetros de consulta:**
-
-| Parámetro | Tipo | Por defecto | Descripción |
-|---|---|---|---|
-| `sender` | `user` \| `system` | — | Filtra por remitente |
-| `limit` | int (1–100) | 20 | Máximo de resultados |
-| `offset` | int (≥ 0) | 0 | Desplazamiento para paginación |
-
-**Ejemplo:**
-
-```
-GET /api/messages/session-abcdef?sender=user&limit=10&offset=0
-```
-
-**Respuesta (200):**
-
-```json
-{
-  "status": "success",
-  "data": [...],
-  "pagination": {
-    "total": 42,
-    "limit": 10,
-    "offset": 0,
-    "has_more": true
-  }
-}
-```
-
----
-
-### GET `/api/messages/search`
-
-Busca mensajes por palabra clave en el contenido.
-
-**Parámetros de consulta:**
-
-| Parámetro | Requerido | Descripción |
-|---|---|---|
-| `keyword` | ✅ | Término de búsqueda (parcial, case-insensitive) |
-| `session_id` | — | Restringe la búsqueda a una sesión |
-| `limit` | — | (1–100, por defecto 20) |
-| `offset` | — | (≥ 0, por defecto 0) |
-
----
-
-### WebSocket `/ws/{session_id}`
-
-Recibe notificaciones en tiempo real cuando se publica un nuevo mensaje en la sesión.
-
-```javascript
-const ws = new WebSocket("ws://localhost:8000/ws/session-abcdef");
-ws.onmessage = (event) => {
-  const { event: type, data } = JSON.parse(event.data);
-  console.log(type, data); // "new_message", { message_id, ... }
-};
-```
-
----
-
-### GET `/health`
-
-```json
-{ "status": "ok", "version": "1.0.0" }
-```
+> La documentación interactiva completa de la API está disponible en **http://localhost:8000/docs** (Swagger UI) una vez levantado el servicio.
 
 ---
 
@@ -256,5 +182,68 @@ La configuración exige un mínimo del **80 % de cobertura** (definido en `pytes
 | `API_KEY` | `nequi-secret-key-change-in-production` | Clave de autenticación |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Solicitudes máximas por IP/minuto |
 | `DEBUG` | `false` | Modo de depuración |
+
+---
+
+## Infraestructura con Terraform
+
+La carpeta `terraform/` contiene la infraestructura como código para desplegar el backend en una instancia **EC2** de AWS (o en **LocalStack** para desarrollo local).
+
+```
+terraform/
+├── main.tf                   # Provider AWS + soporte LocalStack
+├── variables.tf              # Variables configurables
+├── vpc.tf                    # VPC, subnet pública, Internet Gateway
+├── security_groups.tf        # Puertos 22 (SSH) y 8000 (API)
+├── ec2.tf                    # Instancia EC2 + Elastic IP + user_data
+├── outputs.tf                # api_url, swagger_url, ssh_command…
+├── terraform.tfvars.example  # Plantilla de variables
+└── .gitignore                # Excluye estado y secretos
+```
+
+El `user_data` de la instancia instala Docker automáticamente, clona el repositorio y levanta el contenedor del backend.
+
+### Con LocalStack (sin cuenta AWS)
+
+> Requiere el contenedor LocalStack levantado desde la raíz del proyecto:
+> ```bash
+> docker compose -f ../docker-compose.localstack.yml up -d
+> ```
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # ajusta key_pair_name y app_api_key
+terraform init
+terraform apply -var="use_localstack=true"
+```
+
+Tras `apply`, consulta las URLs generadas:
+
+```bash
+terraform output
+# api_url     = "http://<IP>:8000"
+# swagger_url = "http://<IP>:8000/docs"
+```
+
+### Con AWS real
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # edita key_pair_name (obligatorio)
+terraform init
+terraform apply
+```
+
+### Variables de Terraform destacadas
+
+| Variable | Requerida | Descripción |
+|---|---|---|
+| `key_pair_name` | Sí (AWS real) | Key Pair existente en tu cuenta AWS |
+| `app_api_key` | No | API Key del backend (coincide con `API_KEY`) |
+| `use_localstack` | No | `true` para usar LocalStack, `false` para AWS real |
+| `instance_type` | No | Tipo de instancia EC2 (por defecto `t3.small`) |
 
 
